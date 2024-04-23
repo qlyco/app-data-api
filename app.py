@@ -30,7 +30,7 @@ def get_seed(seed_type="daily"):
     elif seed_type == "daily":
         seed = int(datetime(cur.year, cur.month, cur.day, 0, 0).timestamp())
     elif seed_type == "weekly":
-        seed = int(datetime(cur.year, cur.month, (cur - timedelta(days=datetime.today().isoweekday() % 7)).day, 0, 0).timestamp())
+        seed = int(datetime(cur.year, cur.month, (cur - timedelta(days=cur.isoweekday() % 7)).day, 0, 0).timestamp())
     elif seed_type == "monthly":
         seed = int(datetime(cur.year, cur.month, 1, 0, 0).timestamp())
     elif seed_type == "yearly":

@@ -11,7 +11,7 @@ app.config["CORS_HEADERS"] = "Content-Type"
 
 ROUTE_PREFIX: str = "/api/v2"
 
-@app.get(ROUTE_PREFIX + "/")
+@app.get("/")
 @cross_origin()
 def home() -> str:
     """Home route for the REST API"""

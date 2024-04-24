@@ -16,6 +16,9 @@ app.config["CORS_HEADERS"] = "Content-Type"
 
 CACHE_PATH: str = os.environ["CACHE_PATH"]
 
+if not os.path.exists(CACHE_PATH):
+    os.makedirs(CACHE_PATH)
+
 def update_cache():
     """Update the local cache of the database."""
 
@@ -24,7 +27,7 @@ def update_cache():
     DATABASE_URL: str = os.environ["SUPABASE_URL"]
     ANON_KEY: str = os.environ["SUPABASE_ANON_KEY"]
 
-    con: sqlite3.Connection = sqlite3.connect(CACHE_PATH)
+    con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
     cur: sqlite3.Cursor = con.cursor()
     cur.execute(
         "CREATE TABLE IF NOT EXISTS app_details(name UNIQUE, version, changelog, updated_on, release_date);"
@@ -129,7 +132,7 @@ def get_server_time():
 def get_app_data(app_name=None):
     """Return the app data from the database"""
 
-    con: sqlite3.Connection = sqlite3.connect(CACHE_PATH)
+    con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
     cur: sqlite3.Cursor = con.cursor()
 
     data: sqlite3.Cursor = None

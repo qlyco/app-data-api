@@ -33,10 +33,14 @@ def update_cache():
         "CREATE TABLE IF NOT EXISTS app_details(name UNIQUE, version, changelog, updated_on, release_date);"
     )
 
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS app_traffic(id UNIQUE, app, year, month, count);"
+    )
+
     while True:
         print("Getting data")
         data: requests.Response = requests.get(
-            f"{DATABASE_URL}?apikey={ANON_KEY}",
+            f"{DATABASE_URL}/app_details?apikey={ANON_KEY}",
             timeout=(5, 5),
         )
         
@@ -61,7 +65,7 @@ def update_cache():
             )
 
             con.commit()
-
+        
         print("Cache updated.")
         sleep(60 * 60)
 
@@ -123,6 +127,76 @@ def get_server_time():
         "datetime": cur_time.isoformat(),
         "timestamp": int(cur_time.timestamp()),
     }
+
+    return jsonify(res)
+
+@app.get(ROUTE_PREFIX + "/tracker/<appid>/<year>/<month>")
+@cross_origin()
+def get_visitor_stats(appid: str ="", year: str ="", month: str =""):
+    """Return the total visitors of a specific month"""
+
+    res: dict = {
+        "count": 0
+    }
+
+    if appid and year and month:
+        con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
+        cur: sqlite3.Cursor = con.cursor()
+
+        data: sqlite3.Cursor = cur.execute(
+            "SELECT * FROM app_traffic WHERE app = ? AND year = ? AND month = ?;",
+                (appid, year, month)
+        )
+
+        count: int = -1
+
+        for row in data.fetchall():
+            res["count"] = row[4]
+
+    return jsonify(res)
+
+@app.post(ROUTE_PREFIX + "/tracker/<appid>")
+@cross_origin()
+def set_visitor_stats(appid: str = ""):
+    """Add new visitor for the given app ID"""
+    cur_time: datetime = datetime.now(tz=pytz.timezone("Asia/Singapore"))
+
+    year: str = str(cur_time.year)
+    month: str = f"{cur_time.month:0>2}"
+    id: str = f"{appid}.{year}.{month}"
+
+    con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
+    cur: sqlite3.Cursor = con.cursor()
+
+    res: dict = {
+        "status": "Invalid parameter."
+    }
+
+    if appid:
+        data: sqlite3.Cursor = cur.execute(
+            "SELECT * FROM app_details WHERE name = ?;",
+            (appid, )
+        )
+
+        exist: bool = False
+
+        for row in data.fetchall():
+            exist = True
+
+        if exist:
+            cur.execute(
+                "INSERT OR IGNORE INTO \
+                    app_traffic (id, app, year, month, count) \
+                    VALUES (?, ?, ?, ?, 1) \
+                    ON CONFLICT (id) \
+                    DO UPDATE SET \
+                        count = count + 1",
+                    (id, appid, year, month)
+            )
+
+            con.commit()
+
+            res["status"] = "OK"
 
     return jsonify(res)
 

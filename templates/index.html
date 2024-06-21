@@ -34,6 +34,15 @@
                 font-family: monospace;
             }
 
+            .args {
+                margin-block: 16px;
+                list-style-position: inside;
+            }
+
+            .args > * {
+                margin: 0px;
+            }
+
             li {
                 margin-block: 4px;
             }
@@ -46,11 +55,45 @@
         <h3>GET:</h3>
         <ul>
             <li><a class="url" href="/">/</a> : View this page.</li>
+            <li>
+                <a class="url" href="/backup">/backup</a> : Download the database backup.
+                <ul class="args">
+                    <h4>Headers:</h4>
+                    <li><span class="param">passkey</span> : A valid SHA256 encrypted access passkey.</li>
+                </ul>
+            </li>
             <li><a class="url" href="/api/v2/seed">/seed</a> : Get the default seed for random number generator.</li>
             <li><a class="url" href="/api/v2/seed/<seed-type>">/seed/&lt;seed-type&gt;</a> : Get the seed for random number generator (<span class="param">&lt;seed-types&gt;</span>: hourly, daily, weekly, monthly, yearly).</li>
             <li><a class="url" href="/api/v2/time">/time</a> : Get the current server time.</li>
             <li><a class="url" href="/api/v2/apps">/apps</a> : Get the list of app details.</li>
             <li><a class="url" href="/api/v2/apps/<app-name>">/apps/&lt;app-name&gt;</a> : Get the details of a specific app.</li>
+            <li><a class="url" href="/api/v2/tracker/<app-name>/<year>/<month>">/tracker/&lt;app-name&gt;/&lt;year&gt;/&lt;month&gt;</a> : Get the traffic stats of a specific app.</li>
+            <li>
+                <a class="url" href="/api/v2/scores/<app-name>">/scores/&lt;app-name&gt;</a> : Get the lifetime scores of a specific app.
+                <ul class="args">
+                    <h4>Params:</h4>
+                    <li><span class="param">limit</span> : Amount of records to be fetched (Default = 10).</li>
+                </ul>
+            </li>
+            <li>
+                <a class="url" href="/api/v2/scores/<app-name>/<score-type>">/scores/&lt;app-name&gt;/&lt;score-type&gt;</a> : Get the leaderboard of a specific app. (<span class="param">&lt;score-types&gt;</span>: daily, weekly, monthly, yearly).
+                <ul class="args">
+                    <h4>Params:</h4>
+                    <li><span class="param">limit</span> : Amount of records to be fetched (Default = 10).</li>
+                </ul>
+            </li>
+        </ul>
+        <h3>POST:</h3>
+        <ul>
+            <li><a class="url" href="/api/v2/tracker/<app-name>">/tracker/&lt;app-name&gt;</a> : Send the traffic data for a specific app.</li>
+            <li>
+                <a class="url" href="/api/v2/scores/<app-name>">/scores/&lt;app-name&gt;</a> : Send a new score submission of a specific app.
+                <ul class="args">
+                    <h4>JSON:</h4>
+                    <li><span class="param">user</span> : Unique username of the user.</li>
+                    <li><span class="param">score</span> : Score to be submitted.</li>
+                </ul>
+            </li>
         </ul>
     </body>
 </html>

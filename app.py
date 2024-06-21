@@ -5,8 +5,9 @@ from threading import Thread
 from time import sleep
 import sqlite3
 import os
+import hashlib
 import requests
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request, send_file
 from flask_cors import CORS, cross_origin
 import pytz
 
@@ -35,6 +36,10 @@ def update_cache():
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS app_traffic(id UNIQUE, app, year, month, count);"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS app_scores(id INTEGER PRIMARY KEY, app, user, score, date);"
     )
 
     while True:
@@ -200,6 +205,76 @@ def set_visitor_stats(appid: str = ""):
 
     return jsonify(res)
 
+@app.get(ROUTE_PREFIX + "/scores/<appid>")
+@app.get(ROUTE_PREFIX + "/scores/<appid>/<type>")
+@cross_origin()
+def get_leaderboard(appid: str = "", type: str = "lifetime"):
+    """Return the current leaderboard"""
+    cur_time: datetime = datetime.now(tz=pytz.timezone("Asia/Singapore"))
+
+    limit: int = request.args.get("limit", 10)
+
+    res: dict = {
+        "scores": []
+    }
+
+    if appid:
+        con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
+        cur: sqlite3.Cursor = con.cursor()
+
+        sql: str = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+
+        match (type):
+            case "lifetime":
+                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+            case "daily":
+                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND DATE(date) = DATE('now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+            case "weekly":
+                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND strftime('%W', DATE(date)) = strftime('%W', 'now') AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+            case "monthly":
+                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND strftime('%m', DATE(date)) = strftime('%m', 'now') AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+            case "yearly":
+                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+
+
+        data: sqlite3.Cursor = cur.execute(
+            sql, (appid, limit)
+        )
+
+        for row in data.fetchall():
+            res["scores"].append(row)
+
+    return jsonify(res)
+
+@app.post(ROUTE_PREFIX + "/scores/<appid>")
+@cross_origin()
+def set_scores(appid: str = ""):
+    """Add new scores to the leaderboard"""
+    cur_time: datetime = datetime.now(tz=pytz.timezone("Asia/Singapore"))
+
+    con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
+    cur: sqlite3.Cursor = con.cursor()
+
+    res: dict = {
+        "status": "Invalid request."
+    }
+
+    submission: dict = request.json
+
+    if appid and submission:
+        cur.execute(
+            "INSERT INTO \
+                app_scores (app, user, score, date) \
+                VALUES (?, ?, ?, ?)",
+                (appid, submission["user"], submission["score"], cur_time.isoformat())
+        )
+
+        con.commit()
+
+        res["status"] = "OK"
+
+    return jsonify(res)
+
 @app.get(ROUTE_PREFIX + "/apps")
 @app.get(ROUTE_PREFIX + "/apps/<app_name>")
 @cross_origin()
@@ -239,3 +314,17 @@ def get_app_data(app_name=None):
     }
 
     return jsonify(res)
+
+@app.get("/backup")
+@cross_origin()
+def get_backup():
+    passkey: str = hashlib.sha256(str.encode(request.headers.get("passkey", ""))).hexdigest()
+
+    if passkey == os.environ["DATABASE_PASSKEY"]:
+        return send_file(f"{CACHE_PATH}/cache.db")
+    
+    res: dict = {
+        "status": "Backup requires a valid passkey."
+    }
+
+    return jsonify(res), 401

@@ -39,7 +39,7 @@ def update_cache():
     )
 
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS app_scores(id INTEGER PRIMARY KEY, app, user, score, date);"
+        "CREATE TABLE IF NOT EXISTS app_scores(id INTEGER PRIMARY KEY, app, user, score, date, signature);"
     )
 
     while True:
@@ -83,6 +83,28 @@ ROUTE_PREFIX: str = "/api/v2"
 def home() -> str:
     """Home route for the REST API"""
     return render_template("index.html")
+
+@app.get("/auth")
+@cross_origin()
+def get_auth() -> str:
+    """Get unique user signature for the API"""
+    creds: tuple = ()
+    
+    if request.authorization:
+        creds = (request.authorization.get("username", None), request.authorization.get("password", None))
+
+    res: dict = {
+        "status": "Valid authorization header required."
+    }
+
+    if creds and not None in creds:
+        signature: str = hashlib.sha256(str.encode(f"{creds[0]}:{creds[1]}")).hexdigest()
+        
+        res = {"user": creds[0], "signature": signature}
+
+        return jsonify(res), 200
+
+    return jsonify(res), 401
 
 @app.get(ROUTE_PREFIX + "/seed")
 @app.get(ROUTE_PREFIX + "/seed/<seed_type>")
@@ -210,9 +232,8 @@ def set_visitor_stats(appid: str = ""):
 @cross_origin()
 def get_leaderboard(appid: str = "", type: str = "lifetime"):
     """Return the current leaderboard"""
-    cur_time: datetime = datetime.now(tz=pytz.timezone("Asia/Singapore"))
-
     limit: int = request.args.get("limit", 10)
+    order: str = request.args.get("order", "desc")
 
     res: dict = {
         "scores": []
@@ -222,19 +243,22 @@ def get_leaderboard(appid: str = "", type: str = "lifetime"):
         con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
         cur: sqlite3.Cursor = con.cursor()
 
-        sql: str = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+        ordering: str = "ASC" if order == "asc" else "DESC"
+        modifier: str = "MIN" if order == "asc" else "MAX"
+
+        sql: str = f"SELECT user, {modifier}(score), date, signature FROM app_scores WHERE app = ? GROUP BY signature ORDER BY score {ordering}, date ASC LIMIT ?;"
 
         match (type):
             case "lifetime":
-                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+                sql = f"SELECT user, {modifier}(score), date, signature FROM app_scores WHERE app = ? GROUP BY signature ORDER BY score {ordering}, date ASC LIMIT ?;"
             case "daily":
-                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND DATE(date) = DATE('now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+                sql = f"SELECT user, {modifier}(score), date, signature FROM app_scores WHERE app = ? AND DATE(date) = DATE('now') GROUP BY signature ORDER BY score {ordering}, date ASC LIMIT ?;"
             case "weekly":
-                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND strftime('%W', DATE(date)) = strftime('%W', 'now') AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+                sql = f"SELECT user, {modifier}(score), date, signature FROM app_scores WHERE app = ? AND strftime('%W', DATE(date)) = strftime('%W', 'now') AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY signature ORDER BY score {ordering}, date ASC LIMIT ?;"
             case "monthly":
-                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND strftime('%m', DATE(date)) = strftime('%m', 'now') AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+                sql = f"SELECT user, {modifier}(score), date, signature FROM app_scores WHERE app = ? AND strftime('%m', DATE(date)) = strftime('%m', 'now') AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY signature ORDER BY score {ordering}, date ASC LIMIT ?;"
             case "yearly":
-                sql = "SELECT user, MAX(score), date FROM app_scores WHERE app = ? AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY user ORDER BY score DESC, date DESC LIMIT ?;"
+                sql = f"SELECT user, {modifier}(score), date, signature FROM app_scores WHERE app = ? AND strftime('%Y', DATE(date)) = strftime('%Y', 'now') GROUP BY signature ORDER BY score {ordering}, date ASC LIMIT ?;"
 
 
         data: sqlite3.Cursor = cur.execute(
@@ -252,8 +276,10 @@ def set_scores(appid: str = ""):
     """Add new scores to the leaderboard"""
     cur_time: datetime = datetime.now(tz=pytz.timezone("Asia/Singapore"))
 
-    con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
-    cur: sqlite3.Cursor = con.cursor()
+    creds: tuple = ()
+    
+    if request.authorization:
+        creds = (request.authorization.get("username", None), request.authorization.get("password", None))
 
     res: dict = {
         "status": "Invalid request."
@@ -261,19 +287,24 @@ def set_scores(appid: str = ""):
 
     submission: dict = request.json
 
-    if appid and submission:
+    if appid and submission.get("score", None) and (creds and not None in creds):
+        con: sqlite3.Connection = sqlite3.connect(f"{CACHE_PATH}/cache.db")
+        cur: sqlite3.Cursor = con.cursor()
+    
+        signature: str = hashlib.sha256(str.encode(f"{creds[0]}:{creds[1]}")).hexdigest()
+
         cur.execute(
             "INSERT INTO \
-                app_scores (app, user, score, date) \
-                VALUES (?, ?, ?, ?)",
-                (appid, submission["user"], submission["score"], cur_time.isoformat())
+                app_scores (app, user, score, date, signature) \
+                VALUES (?, ?, ?, ?, ?)",
+                (appid, creds[0], submission["score"], cur_time.isoformat(), signature)
         )
 
         con.commit()
 
         res["status"] = "OK"
 
-    return jsonify(res)
+    return jsonify(res), 401
 
 @app.get(ROUTE_PREFIX + "/apps")
 @app.get(ROUTE_PREFIX + "/apps/<app_name>")
